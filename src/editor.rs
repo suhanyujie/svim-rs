@@ -88,6 +88,8 @@ impl Editor {
             }
             Key::Char(c) => {
                 println!("char: {:?}", c);
+                self.document.insert(&self.cursor_posi, c);
+                self.move_cursor(Key::Right);
             }
             _ => (),
         }
@@ -149,6 +151,12 @@ impl Editor {
             }
             Key::Home => x = 0,
             Key::End => x = width,
+            Key::Backspace => {
+                if self.cursor_posi.x > 0 || self.cursor_posi.y > 0 {
+                    self.move_cursor(Key::Left);
+                    self.document.delete(&self.cursor_posi);
+                }
+            }
             _ => (),
         }
 
