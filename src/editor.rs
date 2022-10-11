@@ -10,6 +10,7 @@ use crate::terminal::{self, Terminal};
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const QUIT_TIMES: u8 = 3;
 
 pub struct Editor {
     should_quit: bool,
@@ -18,6 +19,7 @@ pub struct Editor {
     offset: Position,
     document: Document,
     status_msg: StatusMessage,
+    quit_times: u8,
 }
 
 #[derive(Default)]
@@ -80,6 +82,14 @@ impl Editor {
         let press_key = Terminal::read_key()?;
         match press_key {
             Key::Ctrl('q') => {
+                if self.quit_times > 0 && self.document.is_dirty() {
+                    self.status_msg = StatusMessage::from(format!(
+                        "WARNING! File has unsaved changes. Press Ctrl-Q {} more times to quit.",
+                        self.quit_times
+                    ));
+                    self.quit_times -= 1;
+                    return Ok(());
+                }
                 self.should_quit = true;
             }
             Key::Ctrl('s') => self.save(),
@@ -99,6 +109,12 @@ impl Editor {
             }
             _ => (),
         }
+        self.scroll();
+        if self.quit_times < QUIT_TIMES {
+            self.quit_times = QUIT_TIMES;
+            self.status_msg = StatusMessage::from(String::new());
+        }
+
         Ok(())
     }
 
@@ -143,14 +159,14 @@ impl Editor {
             }
             Key::PageUp => {
                 y = if y > terminal_height {
-                    y - terminal_height
+                    y.saturating_sub(terminal_height)
                 } else {
                     0
                 }
             }
             Key::PageDown => {
                 y = if y.saturating_add(terminal_height) < height {
-                    y + terminal_height as usize
+                    y.saturating_add(terminal_height)
                 } else {
                     height
                 }
@@ -175,7 +191,7 @@ impl Editor {
     fn draw_row(&self, row: &Row) {
         let width = self.terminal.size().width as usize;
         let start = self.offset.x;
-        let end = self.offset.x + width;
+        let end = self.offset.x.saturating_add(width);
         let row = row.render(start, end);
         println!("{}\r", row);
     }
@@ -184,7 +200,10 @@ impl Editor {
         let height = self.terminal.size().height;
         for terminal_row in 0..height {
             Terminal::clear_current_line();
-            if let Some(row) = self.document.row(terminal_row as usize + self.offset.y) {
+            if let Some(row) = self
+                .document
+                .row(self.offset.y.saturating_add(terminal_row as usize))
+            {
                 self.draw_row(row);
             } else if self.document.is_empty() && terminal_row == height / 3 {
                 self.draw_welcom_msg();
@@ -247,6 +266,7 @@ impl Editor {
             offset: Position::default(),
             document,
             status_msg: StatusMessage::from(initial_status),
+            quit_times: QUIT_TIMES,
         }
     }
 
@@ -256,12 +276,22 @@ impl Editor {
 
         let mut status;
         let width = self.terminal.size().width as usize;
+        let modified_indicator = if self.document.is_dirty() {
+            " (modified)"
+        } else {
+            ""
+        };
         let mut file_name = "[NoName]".to_string();
         if let Some(name) = &self.document.file_name {
             file_name = name.clone();
             file_name.truncate(20);
         }
-        status = format!("{} - {} lines", file_name, self.document.len());
+        status = format!(
+            "{} - {} lines {}",
+            file_name,
+            self.document.len(),
+            modified_indicator
+        );
         if width > status.len() {
             status.push_str(&" ".repeat(width - status.len()));
         }
@@ -271,9 +301,7 @@ impl Editor {
             self.document.len()
         );
         let len = status.len() + line_indicator.len();
-        if width > len {
-            status.push_str(&" ".repeat(width - len));
-        }
+        status.push_str(&" ".repeat(width.saturating_sub(len)));
         status = format!("{}{}", status, line_indicator);
         status.truncate(width);
         Terminal::set_bg_color(STATUS_BG_COLOR);
@@ -299,7 +327,7 @@ impl Editor {
             self.status_msg = StatusMessage::from(format!("{}{}", tips, result));
             self.refresh_screen()?;
             match crate::editor::read_key()? {
-                Key::Backspace => {}
+                Key::Backspace => result.truncate(result.len().saturating_sub(1)),
                 Key::Char('\n') => {
                     break;
                 }
