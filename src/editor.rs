@@ -1,5 +1,4 @@
-use std::fmt::format;
-use std::io::{self, stdout, Write};
+use std::io::{self, stdout, Error};
 use std::time::{Duration, Instant};
 use termion::event::Key;
 use termion::{color, input::TermRead, raw::IntoRawMode};
@@ -83,6 +82,7 @@ impl Editor {
             Key::Ctrl('q') => {
                 self.should_quit = true;
             }
+            Key::Ctrl('s') => self.save(),
             Key::Up | Key::Down | Key::Left | Key::Right | Key::PageDown | Key::PageUp => {
                 self.move_cursor(press_key)
             }
@@ -226,7 +226,7 @@ impl Editor {
 
     pub fn default() -> Self {
         let args: Vec<String> = std::env::args().collect();
-        let mut initial_status = String::from("HELP: Ctrl-Q = quit");
+        let mut initial_status = String::from("HELP: Ctrl-Q = quit | HELP: Ctrl-S = save");
         let document = if args.len() > 1 {
             let file_name = &args[1];
             // Document::open(&file_name).unwrap_or_default()
@@ -290,6 +290,51 @@ impl Editor {
             let mut text = msg.text.clone();
             text.truncate(self.terminal.size().width as usize);
             print!("{}", text);
+        }
+    }
+
+    fn prompt(&mut self, tips: &str) -> Result<Option<String>, Error> {
+        let mut result = String::new();
+        loop {
+            self.status_msg = StatusMessage::from(format!("{}{}", tips, result));
+            self.refresh_screen()?;
+            match crate::editor::read_key()? {
+                Key::Backspace => {}
+                Key::Char('\n') => {
+                    break;
+                }
+                Key::Char(c) => {
+                    if !c.is_control() {
+                        result.push(c);
+                    }
+                }
+                Key::Esc => {
+                    result.truncate(0);
+                    break;
+                }
+                _ => {}
+            }
+            self.status_msg = StatusMessage::from(String::new());
+            if result.is_empty() {
+                return Ok(None);
+            }
+        }
+        Ok(Some(result))
+    }
+
+    fn save(&mut self) {
+        if self.document.file_name.is_none() {
+            let new_name = self.prompt("Save as: ").unwrap_or(None);
+            if new_name.is_none() {
+                self.status_msg = StatusMessage::from("Save aborted.".to_string());
+                return;
+            }
+            self.document.file_name = new_name;
+        }
+        if self.document.save().is_ok() {
+            self.status_msg = StatusMessage::from("File saved successfully.".to_string());
+        } else {
+            self.status_msg = StatusMessage::from("File save failed.".to_string());
         }
     }
 }
