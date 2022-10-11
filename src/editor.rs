@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use termion::event::Key;
 use termion::{color, input::TermRead, raw::IntoRawMode};
 
-use crate::document::Document;
+use crate::document::{self, Document};
 use crate::row::Row;
 use crate::terminal::{self, Terminal};
 
@@ -246,12 +246,10 @@ impl Editor {
     pub fn default() -> Self {
         let args: Vec<String> = std::env::args().collect();
         let mut initial_status = String::from("HELP: Ctrl-Q = quit | HELP: Ctrl-S = save");
-        let document = if args.len() > 1 {
-            let file_name = &args[1];
-            // Document::open(&file_name).unwrap_or_default()
+        let document = if let Some(file_name) = args.get(1) {
             let doc = Document::open(&file_name);
-            if doc.is_ok() {
-                doc.unwrap()
+            if let Ok(doc) = doc {
+                doc
             } else {
                 initial_status = format!("Err: Cound not open file: {}", file_name);
                 Document::default()

@@ -69,7 +69,7 @@ impl Document {
 
     #[allow(clippy::integer_arithmetic)]
     pub fn delete(&mut self, at: &Position) {
-        let len = self.len();
+        let len = self.rows.len();
         if at.y > len {
             return;
         }
