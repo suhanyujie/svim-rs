@@ -44,16 +44,25 @@ impl Row {
     }
 
     pub fn insert(&mut self, at: usize, c: char) {
-        if at > self.len() {
+        if at >= self.len() {
             self.string.push(c);
+            self.len += 1;
+            return;
         } else {
-            let mut result: String = self.string[..].graphemes(true).take(at).collect();
-            let remainder: String = self.string[..].graphemes(true).skip(at).collect();
-            result.push(c);
-            result.push_str(&remainder);
+            let mut result = String::new();
+            let mut length = 0;
+            for (index, grapheme) in self.string.graphemes(true).enumerate() {
+                if index == at {
+                    length += 1;
+                    result.push(c);
+                }
+                length += 1;
+                result.push_str(grapheme);
+            }
+            self.len = length;
             self.string = result;
         }
-        self.update_len();
+        // self.update_len();
     }
 
     #[allow(clippy::integer_arithmetic)]
@@ -91,9 +100,8 @@ impl From<&str> for Row {
     fn from(slice: &str) -> Self {
         let mut row = Self {
             string: String::from(slice),
-            len: 0,
+            len: slice.graphemes(true).count(),
         };
-        row.update_len();
         row
     }
 }
